@@ -8,6 +8,7 @@ struct Mannequin: NSViewRepresentable {
     var right: SIMD3<Double>
     var up: SIMD3<Double>
     var toward: SIMD3<Double>
+    var projection: SIMD4<Float>
 
     func makeCoordinator() -> HeadRenderer { HeadRenderer() }
 
@@ -25,8 +26,9 @@ struct Mannequin: NSViewRepresentable {
     }
 
     func updateNSView(_ view: MTKView, context: Context) {
-        context.coordinator.orient(right: right, up: up, toward: toward)
-        view.needsDisplay = true
+        if context.coordinator.orient(right: right, up: up, toward: toward, projection: projection) {
+            view.needsDisplay = true
+        }
     }
 }
 
@@ -71,9 +73,12 @@ final class HeadRenderer: NSObject, MTKViewDelegate {
         queue = device.makeCommandQueue()
     }
 
-    func orient(right: SIMD3<Double>, up: SIMD3<Double>, toward: SIMD3<Double>) {
+    func orient(right: SIMD3<Double>, up: SIMD3<Double>, toward: SIMD3<Double>, projection: SIMD4<Float>) -> Bool {
         // The packaged scan is in right-handed space; the acoustic grid's +Z faces forwards.
-        basis = [right, up, toward].map { SIMD4(Float($0.x), Float($0.y), Float(-$0.z), 0) }
+        let updated = [right, up, toward].map { SIMD4(Float($0.x), Float($0.y), Float(-$0.z), 0) } + [projection]
+        guard updated != basis else { return false }
+        basis = updated
+        return true
     }
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
@@ -113,8 +118,8 @@ final class HeadRenderer: NSObject, MTKViewDelegate {
                               constant float4 *basis [[buffer(1)]]) {
         float3 p = mesh[index].position;
         float3 n = mesh[index].normal;
-        return {float4(dot(p, basis[0].xyz) * (2.0 / 0.62),
-                       dot(p, basis[1].xyz) * (2.0 / 0.62),
+        return {float4(dot(p, basis[0].xyz) * basis[3].x + basis[3].z,
+                       dot(p, basis[1].xyz) * basis[3].y + basis[3].w,
                        0.5 - dot(p, basis[2].xyz), 1.0),
                 float3(dot(n, basis[0].xyz), dot(n, basis[1].xyz), dot(n, basis[2].xyz))};
     }

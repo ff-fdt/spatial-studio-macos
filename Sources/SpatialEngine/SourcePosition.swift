@@ -92,6 +92,11 @@ extension SourcePosition {
         return 0.35 * exp((min(r, 1) - 0.30) / 0.70 * log(6 / 0.35))
     }
 
+    public init(scenePoint: SIMD3<Double>) {
+        let radius = simd_length(scenePoint)
+        self.init(direction: scenePoint, distance: Self.distance(forRadius: radius))
+    }
+
     /// Translate in the camera plane frozen at mouse-down. Retain its original
     /// depth, even if the point visually passes in front of or behind the head.
     public func dragged(right: SIMD3<Double>, up: SIMD3<Double>,

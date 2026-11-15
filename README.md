@@ -4,7 +4,7 @@
 
 Spatial Studio is a macOS app for positioning live system audio around your head while listening through headphones. Move one stereo source for a distinct position, or assign different apps to separate sources.
 
-- Position, zoom and rotate the sound field. Click a direction marker for close placement, or drag a point onto the center of the head.
+- Position, zoom up to 20× and rotate the sound field. Use ⌘7 or ⌘8 for an ear close-up; select a source and ⌘-click the visible ear surface to place it. Shift-drag to pan. Click a direction marker for close placement, or drag a point onto the center of the head.
 - Use automatic movement presets for orbits, sweeps and changes in distance. Dedicated close-rear and rear-crown presets are grouped together.
 - Adjust angle, height, distance, speed and gain during movement. Solo any point to compare it with the full mix.
 

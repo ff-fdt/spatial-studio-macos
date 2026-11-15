@@ -12,7 +12,7 @@ struct DeskView: View {
     @State private var showDetails = false
     @State private var showMovements = false
     @State private var viewRequest = ViewRequest()
-    @State private var zoom = 1.0
+    @State private var zoom = SceneZoom.initial
     @State private var movements: [UUID: ActiveSourceMovement] = [:]
     @State private var rightEndOfAzimuth: Set<UUID> = []
     @FocusState private var sceneHasFocus: Bool
@@ -40,7 +40,8 @@ struct DeskView: View {
         SoundField(points: $points, selected: $selected, zoom: $zoom, viewRequest: viewRequest, soloID: soloID,
                    inputNames: Dictionary(uniqueKeysWithValues: audio.inputs.map { ($0.id, $0.name) }),
                    contextMenu: pointContextMenu(for:), onManualMove: manualMove,
-                   onDistanceChange: changeDistance(_:to:), onPlace: place(_:at:))
+                   onDistanceChange: changeDistance(_:to:), onPlace: place(_:at:),
+                   exitEarView: { setView(.overview) })
             .focusable()
             .focused($sceneHasFocus)
             .focusEffectDisabled()
@@ -48,6 +49,19 @@ struct DeskView: View {
                 if let selected { movementMenu(for: selected).padding(.leading, 14) }
             }
             .overlay(alignment: .trailing) { viewControls.padding(.trailing, 14) }
+            .overlay(alignment: .topLeading) {
+                if viewRequest.preset.earSide != nil {
+                    VStack(alignment: .leading, spacing: 7) {
+                        Button(tr("退出近看")) { setView(.overview) }
+                            .buttonStyle(.glass(.regular.interactive()))
+                            .buttonBorderShape(.capsule)
+                            .keyboardShortcut(.escape, modifiers: [])
+                        Text(tr("选中光点后，⌘ 点耳廓定位；⇧ 拖动画面"))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    .padding(16)
+                }
+            }
             .overlay(alignment: .topTrailing) { playControl.padding(.top, 13).padding(.trailing, 16) }
             .overlay(alignment: .bottom) { controls.padding(.bottom, 20) }
             .overlay(alignment: .bottomTrailing) { zoomControls.padding(.trailing, 16).padding(.bottom, 20) }
@@ -65,6 +79,9 @@ struct DeskView: View {
             .onChange(of: selected) { _, value in
                 if value == nil { showMovements = false }
                 if !showDetails { sceneHasFocus = true }
+            }
+            .onChange(of: zoom) { _, value in
+                if viewRequest.preset.earSide != nil, value < SceneZoom.earExitThreshold { setView(.overview) }
             }
             .onChange(of: config) { _, value in audio.apply(value) }
             .task(id: movements.isEmpty) { await animateMovements() }
@@ -88,8 +105,10 @@ struct DeskView: View {
     }
 
     private func setView(_ preset: SceneViewPreset) {
+        let leavingEarView = viewRequest.preset.earSide != nil
         viewRequest = ViewRequest(preset: preset, revision: viewRequest.revision + 1)
-        if preset == .overview { zoom = 1 }
+        if preset.earSide != nil { zoom = 12 }
+        else if preset == .overview || leavingEarView { zoom = SceneZoom.initial }
     }
 
     private var playControl: some View {

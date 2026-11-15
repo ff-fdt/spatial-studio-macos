@@ -8,17 +8,27 @@ enum SceneViewPreset: String, CaseIterable, Identifiable {
     case right = "右侧"
     case back = "后面"
     case bottom = "仰视"
+    case closeLeftEar = "左耳近看"
+    case closeRightEar = "右耳近看"
 
     var id: Self { self }
     var angles: SIMD2<Double> {
         switch self {
-        case .overview: SIMD2(0, 54)
+        case .overview: SIMD2(-45, 30)
         case .top: SIMD2(0, 90)
         case .front: SIMD2(180, 0)
-        case .left: SIMD2(90, 0)
-        case .right: SIMD2(-90, 0)
+        case .left, .closeLeftEar: SIMD2(90, 0)
+        case .right, .closeRightEar: SIMD2(-90, 0)
         case .back: SIMD2(0, 0)
         case .bottom: SIMD2(0, -90)
+        }
+    }
+
+    var earSide: Double? {
+        switch self {
+        case .closeLeftEar: -1
+        case .closeRightEar: 1
+        default: nil
         }
     }
 
@@ -31,6 +41,8 @@ enum SceneViewPreset: String, CaseIterable, Identifiable {
         case .right: "4"
         case .back: "5"
         case .bottom: "6"
+        case .closeLeftEar: "7"
+        case .closeRightEar: "8"
         }
     }
 }

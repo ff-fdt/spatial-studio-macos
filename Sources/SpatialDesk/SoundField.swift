@@ -11,6 +11,8 @@ private struct Camera {
     let size: CGSize
     let orientation: SIMD2<Double>
     var zoom: Double
+    var focus: SIMD3<Double>
+    var pan: CGSize
     var scale: Double { min(size.width, size.height) * 0.36 * zoom }
     var right: SIMD3<Double> {
         let a = orientation.x * .pi / 180
@@ -26,13 +28,22 @@ private struct Camera {
     var towardCamera: SIMD3<Double> { simd_cross(up, right) }
 
     func project(_ p: SIMD3<Double>) -> CGPoint {
-        CGPoint(x: size.width * 0.5 + scale * simd_dot(p, right),
-                y: size.height * 0.48 - scale * simd_dot(p, up))
+        CGPoint(x: size.width * 0.5 + pan.width + scale * simd_dot(p - focus, right),
+                y: size.height * 0.5 + pan.height - scale * simd_dot(p - focus, up))
     }
+    var modelProjection: SIMD4<Float> {
+        let center = project(.zero)
+        let w = max(1, size.width), h = max(1, size.height)
+        return SIMD4(Float(2 * scale / w), Float(2 * scale / h),
+                     Float(2 * center.x / w - 1), Float(1 - 2 * center.y / h))
+    }
+
 }
 
 private enum FieldDrag {
     case orbit(SIMD2<Double>)
+    case pan(CGSize)
+    case surface(UUID, Double)
     case point(UUID, SourcePosition, Camera, Bool)
     case marker(UUID, ListeningPosition)
 }
@@ -48,18 +59,27 @@ struct SoundField: View {
     var onManualMove: (UUID) -> Void
     var onDistanceChange: (UUID, Double) -> Void
     var onPlace: (UUID, ListeningPosition) -> Void
+    var exitEarView: () -> Void
+    @State private var appliedView = ViewRequest()
+    @State private var earContacts: [UUID: SourcePosition] = [:]
+    @State private var pan = CGSize.zero
     @State private var orientation = fieldPreset
     @State private var drag: FieldDrag?
     @State private var hover: CGPoint?
 
     var body: some View {
         GeometryReader { g in
-            let camera = Camera(size: g.size, orientation: orientation, zoom: zoom)
+            let changingView = appliedView != viewRequest
+            let earSide = viewRequest.preset.earSide
+            let focus = earSide.map { SIMD3($0 * 0.145, -0.009, -0.018) } ?? .zero
+            let camera = Camera(size: g.size,
+                                orientation: changingView ? viewRequest.preset.angles : orientation,
+                                zoom: zoom, focus: focus, pan: earSide == nil || changingView ? .zero : pan)
             ZStack(alignment: .topLeading) {
                 Canvas { ctx, _ in drawGuides(ctx, camera: camera) }
-                Mannequin(right: camera.right, up: camera.up, toward: camera.towardCamera)
-                    .frame(width: camera.scale * 0.62, height: camera.scale * 0.62)
-                    .position(camera.project(.zero))
+                Mannequin(right: camera.right, up: camera.up, toward: camera.towardCamera,
+                          projection: camera.modelProjection)
+                    .frame(width: g.size.width, height: g.size.height)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
                 Canvas { ctx, _ in drawPoints(ctx, camera: camera) }.allowsHitTesting(false)
@@ -93,8 +113,16 @@ struct SoundField: View {
                         if drag == nil { NSCursor.arrow.set() }
                     }
                 }
-                .background(FieldPointerEvents(onZoom: { factor in
-                    if drag == nil { zoom = SceneZoom.clamped(zoom * factor) }
+                .background(FieldPointerEvents(onZoom: { factor, cursor in
+                    guard drag == nil else { return }
+                    let next = SceneZoom.clamped(zoom * factor)
+                    if earSide != nil {
+                        let delta = 1 - next / zoom
+                        let center = camera.project(.zero)
+                        pan.width += (cursor.x - center.x) * delta
+                        pan.height += (cursor.y - center.y) * delta
+                    }
+                    zoom = next
                 }, contextMenu: { location in
                     guard drag == nil, let hit = closest(to: location, camera: camera, preferSelection: true) else {
                         return nil
@@ -112,7 +140,16 @@ struct SoundField: View {
 
         }
         .clipped()
-        .onChange(of: viewRequest) { _, request in orientation = request.preset.angles; drag = nil }
+        .onChange(of: viewRequest) { _, request in
+            orientation = request.preset.angles
+            pan = .zero
+            hover = nil
+            drag = nil
+            appliedView = request
+        }
+        .onChange(of: points.map(\.id)) { _, ids in
+            earContacts = earContacts.filter { ids.contains($0.key) }
+        }
     }
 
     private func location(_ point: StereoPoint, camera: Camera) -> CGPoint {
@@ -135,6 +172,16 @@ struct SoundField: View {
 
     private func updateDrag(_ event: DragGesture.Value, camera: Camera) {
         if drag == nil {
+            let flags = NSEvent.modifierFlags
+            if flags.contains(.shift), viewRequest.preset.earSide != nil {
+                drag = .pan(pan)
+                NSCursor.closedHand.set()
+                return
+            }
+            if flags.contains(.command), let selected, let side = viewRequest.preset.earSide {
+                drag = .surface(selected, side)
+                return
+            }
             let hit = closest(to: event.startLocation, camera: camera)
             if let selected, let label = marker(at: event.startLocation, camera: camera),
                (hit.map { distance(to: location($0, camera: camera), from: event.startLocation) } ?? .infinity)
@@ -165,27 +212,51 @@ struct SoundField: View {
         case .orbit(let from):
             orientation = SIMD2((from.x - dx * 0.55).truncatingRemainder(dividingBy: 360),
                                 min(max(from.y + dy * 0.55, -90), 90))
+        case .pan(let from):
+            pan = CGSize(width: from.width + dx, height: from.height + dy)
         case .point(let id, let from, let anchor, let radial):
             guard let index = points.firstIndex(where: { $0.id == id }), hypot(dx, dy) >= 2 else { return }
             if radial {
-                let distance = min(6, max(0, (from.distance + 0.06) * exp(-dy / 95) - 0.06))
+                let distance = min(6, max(0, (from.distance + 0.06) * exp(-dy / (95 * max(1, sqrt(anchor.zoom)))) - 0.06))
                 onDistanceChange(id, distance)
                 return
             }
             onManualMove(id)
             points[index].position = from.dragged(right: anchor.right, up: anchor.up,
                                                   horizontal: dx / anchor.scale, vertical: -dy / anchor.scale)
-        case .marker, .none: break
+        case .marker, .surface, .none: break
         }
     }
 
     private func isInHeadDropZone(_ point: StereoPoint, camera: Camera) -> Bool {
+        guard viewRequest.preset.earSide == nil else { return false }
         let loc = location(point, camera: camera)
         let head = camera.project(.zero)
         return hypot(loc.x - head.x, loc.y - head.y) < 17
     }
 
     private func finishDrag(_ event: DragGesture.Value, camera: Camera) {
+        if case .orbit = drag, let side = viewRequest.preset.earSide {
+            let updated = Camera(size: camera.size, orientation: orientation, zoom: zoom,
+                                 focus: camera.focus, pan: pan)
+            if updated.towardCamera.x * side < 0.55 { exitEarView() }
+            return
+        }
+        if case .surface(let id, let side) = drag {
+            guard hypot(event.translation.width, event.translation.height) < 5,
+                  camera.towardCamera.x * side > 0.55,
+                  let i = points.firstIndex(where: { $0.id == id }) else { return }
+            let center = camera.project(.zero)
+            let uv = SIMD2((event.location.x - center.x) / camera.scale, (center.y - event.location.y) / camera.scale)
+            if let hit = EarSurface.hit(side: side, uv: uv, right: camera.right, up: camera.up,
+                                        toward: camera.towardCamera) {
+                onManualMove(id)
+                let position = SourcePosition(scenePoint: hit)
+                points[i].position = position
+                earContacts[id] = position
+            }
+            return
+        }
         if case .marker(let id, let preset) = drag {
             if hypot(event.translation.width, event.translation.height) < 7 { onPlace(id, preset) }
             return
@@ -228,6 +299,7 @@ struct SoundField: View {
 
     private func directionMarkers(camera: Camera) -> [DirectionMarker] {
         let center = camera.project(.zero)
+        if viewRequest.preset.earSide != nil, zoom >= 8 { return [] }
         let axes: [(SIMD3<Double>, String, ListeningPosition)] = [
             (SIMD3(-1, 0, 0), tr("左耳"), .leftEar), (SIMD3(1, 0, 0), tr("右耳"), .rightEar),
             (SIMD3(0, 0, 1), tr("前"), .front), (SIMD3(0, 0, -1), tr("后"), .back),
@@ -278,12 +350,29 @@ struct SoundField: View {
                 ctx.fill(ring, with: .color(pointColor.opacity(0.10)))
                 ctx.stroke(ring, with: .color(pointColor.opacity(0.64)), lineWidth: 0.9)
             }
-            ctx.fill(dot, with: .color(pointColor))
+            let earContact = earContacts[p.id] == p.position
+            if earContact {
+                let diamond = Path {
+                    $0.move(to: CGPoint(x: loc.x, y: loc.y - 6))
+                    $0.addLine(to: CGPoint(x: loc.x + 6, y: loc.y))
+                    $0.addLine(to: CGPoint(x: loc.x, y: loc.y + 6))
+                    $0.addLine(to: CGPoint(x: loc.x - 6, y: loc.y))
+                    $0.closeSubpath()
+                }
+                ctx.fill(diamond, with: .color(.black.opacity(0.62)))
+                ctx.stroke(diamond, with: .color(pointColor), lineWidth: 1.4)
+                if focused {
+                    ctx.draw(Text(tr("耳廓表面")).font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(pointColor), at: CGPoint(x: loc.x, y: loc.y - 22))
+                }
+            } else {
+                ctx.fill(dot, with: .color(pointColor))
+            }
             let headTarget: Bool
             if case .point(let id, _, _, false) = drag {
                 headTarget = id == p.id && isInHeadDropZone(p, camera: camera)
             } else { headTarget = false }
-            if focused && (p.position.distance < 0.12 || headTarget) {
+            if focused && !earContact && (p.position.distance < 0.12 || headTarget) {
                 ctx.draw(Text(tr("脑内")).font(.system(size: 10, weight: .medium))
                     .foregroundStyle(silver), at: CGPoint(x: loc.x, y: loc.y - 21))
             }

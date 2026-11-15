@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Handles zoom and contextual clicks within this scene.
 struct FieldPointerEvents: NSViewRepresentable {
-    var onZoom: (Double) -> Void
+    var onZoom: (Double, CGPoint) -> Void
     var contextMenu: (CGPoint) -> NSMenu?
 
     func makeNSView(context: Context) -> View {
@@ -23,7 +23,7 @@ struct FieldPointerEvents: NSViewRepresentable {
     }
 
     final class View: NSView {
-        var onZoom: ((Double) -> Void)?
+        var onZoom: ((Double, CGPoint) -> Void)?
         var contextMenu: ((CGPoint) -> NSMenu?)?
         private var monitor: Any?
 
@@ -37,6 +37,7 @@ struct FieldPointerEvents: NSViewRepresentable {
                 guard let self, let window = self.window, window === event.window else { return event }
                 let point = self.convert(event.locationInWindow, from: nil)
                 guard self.bounds.contains(point) else { return event }
+                let canvasPoint = CGPoint(x: point.x - self.bounds.minX, y: self.bounds.maxY - point.y)
                 switch event.type {
                 case .rightMouseDown, .leftMouseDown:
                     guard event.type == .rightMouseDown || event.modifierFlags.contains(.control),
@@ -47,9 +48,9 @@ struct FieldPointerEvents: NSViewRepresentable {
                 case .scrollWheel:
                     guard event.scrollingDeltaY != 0, event.momentumPhase.isEmpty else { return event }
                     let scale = event.hasPreciseScrollingDeltas ? 0.005 : 0.12
-                    self.onZoom?(exp(max(-0.24, min(0.24, event.scrollingDeltaY * scale))))
+                    self.onZoom?(exp(max(-0.24, min(0.24, event.scrollingDeltaY * scale))), canvasPoint)
                 case .magnify:
-                    self.onZoom?(max(0.5, 1 + event.magnification))
+                    self.onZoom?(max(0.5, 1 + event.magnification), canvasPoint)
                 default: return event
                 }
                 return nil
