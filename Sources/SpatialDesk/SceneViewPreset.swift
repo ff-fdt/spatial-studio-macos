@@ -3,18 +3,18 @@ import simd
 enum SceneViewPreset: String, CaseIterable, Identifiable {
     case overview = "默认"
     case top = "俯视"
-    case front = "正面"
-    case left = "左侧"
-    case right = "右侧"
-    case back = "后面"
+    case front = "正视"
+    case left = "左视"
+    case right = "右视"
+    case back = "后视"
     case bottom = "仰视"
-    case closeLeftEar = "左耳近看"
-    case closeRightEar = "右耳近看"
+    case closeLeftEar = "左耳特写"
+    case closeRightEar = "右耳特写"
 
     var id: Self { self }
     var angles: SIMD2<Double> {
         switch self {
-        case .overview: SIMD2(-45, 30)
+        case .overview: SIMD2(135, 30)
         case .top: SIMD2(0, 90)
         case .front: SIMD2(180, 0)
         case .left, .closeLeftEar: SIMD2(90, 0)

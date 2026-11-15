@@ -1,9 +1,9 @@
 "默认" = "Default";
 "俯视" = "Top";
-"正面" = "Front";
-"左侧" = "Left";
-"右侧" = "Right";
-"后面" = "Rear";
+"正视" = "Front";
+"左视" = "Left";
+"右视" = "Right";
+"后视" = "Rear";
 "仰视" = "Bottom";
 "正前方" = "Straight ahead";
 "正后方" = "Straight behind";
@@ -41,7 +41,6 @@
 "复制光点" = "Duplicate source";
 "快速定位" = "Quick position";
 "自动移动" = "Auto movement";
-"正在运行：" = "Running: ";
 "停止移动" = "Stop movement";
 "自动" = "Auto";
 "静止" = "Stopped";
@@ -85,8 +84,8 @@
 "后脑与后头顶" = "Close behind the head";
 "环绕" = "Orbit";
 "往返" = "Sweeps";
-"左耳近看" = "Left ear close-up";
-"右耳近看" = "Right ear close-up";
+"左耳特写" = "Left ear";
+"右耳特写" = "Right ear";
 "选中光点后，⌘ 点耳廓定位；⇧ 拖动画面" = "Select a source, then ⌘-click the ear. ⇧-drag to pan.";
 "退出近看" = "Exit close-up";
 "耳廓表面" = "Ear surface";

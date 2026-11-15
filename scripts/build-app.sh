@@ -25,8 +25,8 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <key>CFBundleExecutable</key><string>SpatialDesk</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleIconFile</key><string>SpatialStudio.icns</string>
-<key>CFBundleShortVersionString</key><string>0.30</string>
-<key>CFBundleVersion</key><string>30</string>
+<key>CFBundleShortVersionString</key><string>0.31</string>
+<key>CFBundleVersion</key><string>31</string>
 <key>LSMinimumSystemVersion</key><string>26.0</string>
 <key>CFBundleDevelopmentRegion</key><string>en</string>
 <key>NSAudioCaptureUsageDescription</key><string>Spatial Studio processes your Mac’s audio in real time and plays it back through your headphones.</string>

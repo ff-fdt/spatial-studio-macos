@@ -75,11 +75,17 @@ struct DeskView: View {
             }
             .background(Color(white: 0.07).ignoresSafeArea())
             .defaultFocus($sceneHasFocus, true)
+            .onAppear { selectOnlyPoint() }
             .onDeleteCommand { if let selected { deletePoint(selected) } }
             .onChange(of: selected) { _, value in
+                if value == nil, points.count == 1 {
+                    selectOnlyPoint()
+                    return
+                }
                 if value == nil { showMovements = false }
                 if !showDetails { sceneHasFocus = true }
             }
+            .onChange(of: points.count) { _, _ in selectOnlyPoint() }
             .onChange(of: zoom) { _, value in
                 if viewRequest.preset.earSide != nil, value < SceneZoom.earExitThreshold { setView(.overview) }
             }
@@ -88,20 +94,29 @@ struct DeskView: View {
     }
 
     private var viewControls: some View {
-        GlassEffectContainer(spacing: 5) {
-            VStack(spacing: 6) {
-                ForEach(SceneViewPreset.allCases.filter { $0 != .overview }) { preset in
-                    Button { setView(preset) } label: {
-                        Text(tr(preset.rawValue)).frame(minWidth: 31)
-                    }
-                    .keyboardShortcut(KeyEquivalent(Character(preset.key)), modifiers: .command)
-                    .help(tr(preset.rawValue) + " · ⌘\(preset.key)")
-                }
+        VStack(spacing: 2) {
+            ForEach(SceneViewPreset.allCases.filter { $0 != .overview && $0.earSide == nil }) { preset in
+                viewPresetRow(preset)
             }
-            .font(.caption)
-            .buttonStyle(.glass(.regular.interactive()))
-            .buttonBorderShape(.capsule)
+            Rectangle()
+                .fill(.white.opacity(0.15))
+                .frame(height: 1)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .accessibilityHidden(true)
+            ForEach(SceneViewPreset.allCases.filter { $0.earSide != nil }) { preset in
+                viewPresetRow(preset)
+            }
         }
+        .padding(5)
+        .fixedSize(horizontal: true, vertical: false)
+        .glassEffect(.regular, in: .rect(cornerRadius: 17))
+    }
+
+    private func viewPresetRow(_ preset: SceneViewPreset) -> some View {
+        ViewPresetRow(title: tr(preset.rawValue)) { setView(preset) }
+            .keyboardShortcut(KeyEquivalent(Character(preset.key)), modifiers: .command)
+            .help(tr(preset.rawValue) + " · ⌘\(preset.key)")
     }
 
     private func setView(_ preset: SceneViewPreset) {
@@ -249,6 +264,10 @@ struct DeskView: View {
         points[index].position = preset.placed(from: points[index].position)
     }
 
+    private func selectOnlyPoint() {
+        if points.count == 1 { selected = points[0].id }
+    }
+
     private func deletePoint(_ pointID: UUID) {
         guard let index = points.firstIndex(where: { $0.id == pointID }) else { return }
         showDetails = false
@@ -294,10 +313,6 @@ struct DeskView: View {
         menu.addItem(list)
         let motions = NSMenu(title: tr("自动移动"))
         motions.autoenablesItems = false
-        if let running = movements[pointID]?.pattern {
-            motions.addItem(PointMenuAction.item(tr("正在运行：") + tr(running.rawValue), enabled: false) {})
-            motions.addItem(.separator())
-        }
         for motion in SourceMovement.allCases {
             let item = PointMenuAction.item(tr(motion.rawValue)) { startMovement(motion, for: pointID) }
             item.state = movements[pointID]?.pattern == motion ? .on : .off
@@ -335,7 +350,7 @@ struct DeskView: View {
     private func movementPanel(for id: UUID) -> some View {
         let active = movements[id]?.pattern
         return VStack(alignment: .leading, spacing: 9) {
-            Text(active.map { tr("正在运行：") + tr($0.rawValue) } ?? tr("自动移动"))
+            Text(tr("自动移动"))
                 .font(.callout.weight(.semibold))
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
@@ -554,6 +569,28 @@ struct DeskView: View {
         selected = new.id
     }
 
+}
+
+
+private struct ViewPresetRow: View {
+    let title: String
+    let action: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.white.opacity(hovered ? 1 : 0.84))
+                .padding(.horizontal, 8)
+                .frame(minWidth: 62, maxWidth: .infinity, minHeight: 27)
+                .background(.white.opacity(hovered ? 0.14 : 0), in: RoundedRectangle(cornerRadius: 9))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .neutralFocus()
+        .onHover { hovered = $0 }
+    }
 }
 
 func channelTitle(_ channel: StereoChannel) -> String {
